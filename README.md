@@ -12,3 +12,4 @@ e.g. ./remcos_decryptor.py -f Remcos205.exe -d
 
 Disclaimer: This tool comes without any warranties. Use it at your own risk.
 
+
