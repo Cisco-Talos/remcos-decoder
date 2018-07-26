@@ -145,12 +145,17 @@ def check_filetype(filename):
 
 def usage(prg):
     print
-    print("Talos Decryptor POC for Remcos RAT version 2.0.5 and earlier")
+    print("################################################################")
+    print("# Talos Decryptor POC for Remcos RAT version 2.0.5 and earlier #")
+    print("################################################################")
     print
-    print("%s -f [--file] <remcos_executable_file>           Remcos executable file" % prg)
-    print("%s -e [--encypted_data] <encrypted_data_file>     Remcos executable file" % prg)
-    print("%s -d [--decrypted_only]                          Show only decrypted data strings (Suppress all error msg)" % prg)
-    print("%s -v [--verbose]                                 Verbose output" % prg)
+    print("%s -f <remcos_executable_file> [-e <encrypted_data_file>] [-d] [-v]" % prg)
+    print
+    print("-f [--file] <remcos_executable_file>           Remcos executable file")
+    print("-e [--encypted_data] <encrypted_data_file>     Remcos executable file")
+    print("-d [--decrypted_only]                          Show only decrypted data strings") 
+    print("                                               (-d is suppressing all error msg!)")
+    print("-v [--verbose]                                 Verbose output")
     print
     print("e.g. %s -f Remcos205.exe -d" % prg)
     print
