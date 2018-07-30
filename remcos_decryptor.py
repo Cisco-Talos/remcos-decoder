@@ -15,24 +15,28 @@ import string
 import pefile
 import magic
 import getopt
+import array
+import re
+import string
 from pprint import pprint
+
 
 PRG=None
 VERBOSE=False
 DECRYPT_ONLY=False
+C2_ONLY=False
 FATAL_ERROR=10
 
 def print_hexdata(s,d,astart):
 
     l=len(d)
-    print("%s Length:%d(%x)" % (s,l,l))
+    print("%s Length:%d(0x%x)" % (s,l,l))
     c=0
     sys.stdout.write("%06x  " % (c + astart))
     a=[]
-    for byte in d:
+    for c,byte in enumerate(d,1):
         sys.stdout.write("%02x " % byte)
         a.append(byte)
-        c = c + 1
         if not c % 16:
             sys.stdout.write("  ")
             for x in a:
@@ -47,11 +51,25 @@ def print_hexdata(s,d,astart):
 
 def print_hexdata_str(d):
 
-    l=len(d)
-    for byte in d:
-        if byte < 127 and byte > 33:
-            sys.stdout.write("%c" % byte)
-    print("\n")
+    a = array.array('b')
+    a.extend(d)
+    print a.tostring()
+    print
+
+
+def get_C2(d):
+
+    a = array.array('b')    
+    a.extend(d)
+    d_str = a.tostring()
+
+    fields=d_str.split("|")
+    C2=[]
+    for field in fields:
+            if bool(re.search('.*:.*(:.*)*', field)):
+                    C2.append(field)
+
+    return(C2)
 
 
 def get_named_resource_from_PE(pefilename,ResourceName):
@@ -143,19 +161,52 @@ def check_filetype(filename):
     return None
 
 
+def check_version(remcos_binary_name):
+
+    printable = set(string.printable)
+
+    with open(remcos_binary_name, 'rb') as myfile:
+        fcontent=myfile.read()
+
+    s=""
+    slist=[]
+    # find strings in binary file
+    for c in fcontent:
+        if len(s) > 4 and ord(c) == 0: # no strings <= 4
+            slist.append(s)
+	    s=""
+	    continue
+
+	if c in printable:
+	    s += c
+
+    version_found = False
+    # find and extract version string e.g. "2.0.5 Pro" or "1.7 Free"
+    for s in slist:
+        if bool(re.search('^[12]\.\d+\d{0,1}.*[FP].*', s)):
+            print_out("%s is version %s\n" % (remcos_binary_name,s))
+	    version_found = True
+	    break
+
+    if not version_found:
+        print_out("ERROR: %s no version found\n" % remcos_binary_name, FATAL_ERROR)
+
+
 def usage(prg):
     print
     print("################################################################")
     print("# Talos Decryptor POC for Remcos RAT version 2.0.5 and earlier #")
     print("################################################################")
     print
-    print("%s -f <remcos_executable_file> [-e <encrypted_data_file>] [-d] [-v]" % prg)
+    print("%s -f <remcos_executable_file> [-e <encrypted_data_file>] [-d] [-v] [-c] [-r]" % prg)
     print
     print("-f [--file] <remcos_executable_file>           Remcos executable file")
-    print("-e [--encypted_data] <encrypted_data_file>     Remcos executable file")
-    print("-d [--decrypted_only]                          Show only decrypted data strings") 
+    print("-e [--encypted_data] <encrypted_data_file>     Encrypted data file (optional)")
+    print("-d [--decrypted_only]                          Show only decrypted data strings (optional)") 
     print("                                               (-d is suppressing all error msg!)")
-    print("-v [--verbose]                                 Verbose output")
+    print("-c [--c2_only]                                 Show only extracted C2 data (optional)")
+    print("-v [--verbose]                                 Verbose output (optional)")
+    print("-r [--remcos_version]                          Print Remcos version info")
     print
     print("e.g. %s -f Remcos205.exe -d" % prg)
     print
@@ -167,6 +218,9 @@ def main(argv):
 
     global VERBOSE
     global DECRYPT_ONLY
+    global C2_ONLY
+
+    REMCOS_VERSION_CHECK = False
 
     if len(sys.argv) < 3: 
         usage(sys.argv[0])
@@ -176,7 +230,7 @@ def main(argv):
     encrypted_data_file  = None
 
     try:
-        opts, args = getopt.getopt(argv,"hve:df:",["help","verbose","encypted_data","decrypted_only","file"])
+        opts, args = getopt.getopt(argv,"hve:df:cr",["help","verbose","encypted_data","decrypted_only","file","c2_only","remcos_version"])
     except getopt.GetoptError:
         print_out("\nWrong parameter. Check syntax:")
         usage(sys.argv[0])
@@ -192,6 +246,11 @@ def main(argv):
             encrypted_data_file = arg
         elif opt in ("-d", "--decrypted_only"):
             DECRYPT_ONLY = True
+        elif opt in ("-c", "--c2_only"):
+            C2_ONLY      = True
+            DECRYPT_ONLY = True
+        elif opt in ("-r", "--remcos_version"):
+            REMCOS_VERSION_CHECK = True
         elif opt in ("-f", "--file"):
             pefilename = arg
 
@@ -206,6 +265,10 @@ def main(argv):
 
     if filetype != "PE32 EXE":
         print_out("ERROR: File %s is not a PE executable or it is a DLL. Try -v to see what it is." % pefilename, FATAL_ERROR)
+
+    if REMCOS_VERSION_CHECK:
+        check_version(pefilename)
+        exit(0)
 
     print_out("Analysing file: %s\n" % pefilename)
 
@@ -242,11 +305,17 @@ def main(argv):
     # Decode the encrypted data
     clear_text = RC4_stream_generator(encrypted,S)
 
-    if DECRYPT_ONLY:
+    if DECRYPT_ONLY and not C2_ONLY:
         print_hexdata_str(clear_text)
-    else:
+    elif not DECRYPT_ONLY and not C2_ONLY:
         print_hexdata("\nDecrypted data:",clear_text,0x0)
-    
+
+    if C2_ONLY:
+        C2 = get_C2(clear_text)
+        for C2_server in C2:
+            print("%s" % C2_server)
+        print
+ 
     exit(0)
 
 if __name__ == "__main__":
