@@ -51,23 +51,28 @@ def print_hexdata(s,d,astart):
 
 def print_hexdata_str(d):
 
-    a = array.array('b')
-    a.extend(d)
-    print a.tostring()
-    print
+    for x in d:
+        if x < 127 and x > 33:
+            sys.stdout.write("%c" % x)
+        else:
+            sys.stdout.write(".")
+    print("\n")
 
 
 def get_C2(d):
 
-    a = array.array('b')    
-    a.extend(d)
-    d_str = a.tostring()
+    try:
+        a = array.array('b')    
+        a.extend(d)
+        d_str = a.tostring()
 
-    fields=d_str.split("|")
-    C2=[]
-    for field in fields:
-            if bool(re.search('.*:.*(:.*)*', field)):
-                    C2.append(field)
+        fields=d_str.split("|")
+        C2=[]
+        for field in fields:
+                if bool(re.search('.*:.*(:.*)*', field)):
+                        C2.append(field)
+    except:
+        C2 = None
 
     return(C2)
 
@@ -207,6 +212,7 @@ def usage(prg):
     print("-c [--c2_only]                                 Show only extracted C2 data (optional)")
     print("-v [--verbose]                                 Verbose output (optional)")
     print("-r [--remcos_version]                          Print Remcos version info")
+    print("-k [--key]                                     Provide key as string e.g. -k password")  
     print
     print("e.g. %s -f Remcos205.exe -d" % prg)
     print
@@ -221,6 +227,7 @@ def main(argv):
     global C2_ONLY
 
     REMCOS_VERSION_CHECK = False
+    key_via_cmd = None
 
     if len(sys.argv) < 3: 
         usage(sys.argv[0])
@@ -230,7 +237,7 @@ def main(argv):
     encrypted_data_file  = None
 
     try:
-        opts, args = getopt.getopt(argv,"hve:df:cr",["help","verbose","encypted_data","decrypted_only","file","c2_only","remcos_version"])
+        opts, args = getopt.getopt(argv,"hve:df:crk:",["help","verbose","encypted_data","decrypted_only","file","c2_only","remcos_version","key"])
     except getopt.GetoptError:
         print_out("\nWrong parameter. Check syntax:")
         usage(sys.argv[0])
@@ -251,6 +258,8 @@ def main(argv):
             DECRYPT_ONLY = True
         elif opt in ("-r", "--remcos_version"):
             REMCOS_VERSION_CHECK = True
+        elif opt in ("-k", "--key"):
+            key_via_cmd = arg
         elif opt in ("-f", "--file"):
             pefilename = arg
 
@@ -258,7 +267,7 @@ def main(argv):
         print
 
     if not pefilename:
-        usage();
+        usage(sys.argv[0]);
         exit(1)
 
     filetype = check_filetype(pefilename)
@@ -272,14 +281,23 @@ def main(argv):
 
     print_out("Analysing file: %s\n" % pefilename)
 
-    # Get data from the PE resource section
-    ResourceData = get_named_resource_from_PE(pefilename,"SETTINGS")
+    try:
+        # Get data from the PE resource section
+        ResourceData = get_named_resource_from_PE(pefilename,"SETTINGS")
 
-    # Extact the key from the PE resource section data
-    keylen = ord(ResourceData[0]) 
-    key = map(ord, list(ResourceData[1:keylen+1]))
-    if not DECRYPT_ONLY and VERBOSE:
-        print_hexdata("Key:",key,0x0)
+        # Extact the key from the PE resource section data or get it from the cmd line
+        if key_via_cmd:
+            key = map(ord,key_via_cmd)  
+            keylen = len(key)
+        else:
+            keylen = ord(ResourceData[0]) 
+            key = map(ord, list(ResourceData[1:keylen+1]))
+
+        if not DECRYPT_ONLY and VERBOSE:
+            print_hexdata("Key:",key,0x0)
+
+    except:
+        print_out("ERROR: File %s. Could not extract data from PE resource, maybe not a remcos file or it is packed?\n" % pefilename,FATAL_ERROR)
 
     # Do we have the encryted data in a file or should we get it from the resource section
     try:
@@ -312,6 +330,10 @@ def main(argv):
 
     if C2_ONLY:
         C2 = get_C2(clear_text)
+        print("C2 server for %s" % pefilename)
+        if C2 == None:
+            print("ERROR: C2 not decoded")
+            exit(1)
         for C2_server in C2:
             print("%s" % C2_server)
         print
